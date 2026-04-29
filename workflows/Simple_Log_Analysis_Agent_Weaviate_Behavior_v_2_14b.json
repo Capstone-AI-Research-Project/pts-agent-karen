@@ -1,0 +1,745 @@
+{
+  "name": "Simple Log Analysis Agent Weaviate Behavior v.2.14b",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Log Upload",
+        "formDescription": "Upload a log file to analyze",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Log File",
+              "fieldType": "file",
+              "fieldName": "data",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -832,
+        384
+      ],
+      "id": "70ff1b3b-9de6-40b6-b42e-f0440a437bfd",
+      "name": "On form submission1",
+      "webhookId": "74410f93-ca1b-4bde-937c-981eb2af3004"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "fileContent",
+        "options": {
+          "keepSource": "json"
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -624,
+        384
+      ],
+      "id": "79328cdb-f4ed-48c6-abe5-5b72ef4d2390",
+      "name": "Extract from File1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log Parser Node - Windows & Linux with only human-readable timestamps\n\nconst input = $input.item.json;\nconst rawLogs = input.fileContent || \"\";\nconst lines = rawLogs.split('\\n');\n\n// Helper to convert ISO or epoch string to human-readable\nfunction toHumanDate(ts) {\n  if (!ts || ts === \"unknown\") return \"unknown\";\n  try {\n    const d = new Date(ts);\n    if (isNaN(d.getTime())) return ts; // fallback if invalid\n    return d.toLocaleString(\"en-US\", { timeZone: \"UTC\", hour12: false });\n  } catch (e) {\n    return ts;\n  }\n}\n\n// Parse a single Windows log line\nfunction parseWindowsLine(line) {\n  if (!line || line.trim() === \"\") return null;\n  const parts = line.split(\" \");\n  let logObj = { raw: line };\n\n  parts.forEach((part, index) => {\n    if (index === 0 && part.includes(\"T\") && part.includes(\"Z\")) {\n      logObj.timestamp_human = toHumanDate(part);\n      return;\n    }\n    const eqIndex = part.indexOf(\"=\");\n    if (eqIndex > 0) {\n      const key = part.slice(0, eqIndex).trim();\n      const value = part.slice(eqIndex + 1).trim();\n      if (key && value) logObj[key] = value;\n    }\n  });\n\n  return {\n    timestamp_human: logObj.timestamp_human || \"unknown\",\n    ip: logObj.IpAddress || \"unknown\",\n    username: logObj.TargetUserName || logObj.SubjectUserName || \"unknown\",\n    eventId: logObj.EventID || \"unknown\",\n    message: line,\n    raw: line,\n    ...logObj\n  };\n}\n\n// Parse a single Linux log line\nfunction parseLinuxLine(line) {\n  if (!line || line.trim() === \"\") return null;\n\n  // Example: 2026-02-15T08:12:01Z host process[pid]: message\n  const regex = /^(\\S+\\s+\\d+\\s+\\d+:\\d+:\\d+|\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z)\\s+(\\S+)\\s+([\\w\\-.]+)(?:\\[(\\d+)\\])?:\\s+(.*)$/;\n  const match = line.match(regex);\n  if (!match) return { timestamp_human: \"unknown\", message: line, raw: line };\n\n  const [, timestamp, host, processName, pid, message] = match;\n\n  return {\n    timestamp_human: toHumanDate(timestamp),\n    host: host || \"unknown\",\n    process: processName || \"unknown\",\n    pid: pid || \"unknown\",\n    message: message || line,\n    raw: line\n  };\n}\n\n// Auto-detect log type by checking for EventID in first non-empty line\nlet logType = \"linux\";\nfor (const l of lines) {\n  if (!l.trim()) continue;\n  logType = l.includes(\"EventID=\") ? \"windows\" : \"linux\";\n  break;\n}\n\n// Parse all lines\nconst parsedLogs = lines\n  .map(line => (logType === \"windows\" ? parseWindowsLine(line) : parseLinuxLine(line)))\n  .filter(item => item !== null)\n  .map(item => ({\n    json: item\n  }));\n\nreturn parsedLogs;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        384
+      ],
+      "id": "53f2209a-dcff-4416-a2ab-3a6397694570",
+      "name": "Log Parser1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const chunkSize = 500;\nconst data = $input.all();\n\nlet chunks = [];\nfor (let i = 0; i < data.length; i += chunkSize) {\n  chunks.push(data.slice(i, i + chunkSize));\n}\n\nreturn chunks.map(chunk => ({ json: { chunk } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        384
+      ],
+      "id": "f3068594-83d6-4bbd-b0c6-10f98bbf9172",
+      "name": "Chunk Logs"
+    },
+    {
+      "parameters": {
+        "jsCode": "let ips = new Set();\nlet users = new Set();\nlet events = [];\n\n// Loop through all items\nfor (const item of $input.all()) {\n  const chunks = item.json.chunk || [];\n\n  for (const chunkItem of chunks) {\n    const log = chunkItem.json;\n\n    // IP extraction\n    const ipMatch = log.raw?.match(/\\b\\d{1,3}(\\.\\d{1,3}){3}\\b/);\n    if (ipMatch) ips.add(ipMatch[0]);\n\n    // Username extraction\n    if (log.TargetUserName) users.add(log.TargetUserName);\n\n    // Event extraction\n    events.push({\n      timestamp: log.timestamp_human || \"unknown\",\n      action: log.EventID || \"unknown\",\n      details: log.raw || \"unknown\"\n    });\n  }\n}\n\nreturn [{\n  json: {\n    ips: [...ips],\n    users: [...users],\n    events\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        384
+      ],
+      "id": "8c3a33c0-6773-46ae-8a30-82f4d9c986c9",
+      "name": "Info Extractor"
+    },
+    {
+      "parameters": {
+        "jsCode": "let allIPs = new Set();\nlet allUsers = new Set();\nlet allEvents = [];\n\nfor (const item of $input.all()) {\n  item.json.ips.forEach(ip => allIPs.add(ip));\n  item.json.users.forEach(u => allUsers.add(u));\n  allEvents.push(...item.json.events);\n}\n\nallEvents.sort((a,b) => new Date(a.timestamp_human) - new Date(b.timestamp_human));\n\nreturn [{\n  json: {\n    ips: [...allIPs],\n    users: [...allUsers],\n    events: allEvents,\n    earliest: allEvents[0]?.timestamp || \"Not Provided\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        384
+      ],
+      "id": "1e910a3d-629d-416f-9b84-60811d736603",
+      "name": "Aggregate Chunks"
+    },
+    {
+      "parameters": {
+        "jsCode": "const behaviors = $json.behaviors || [];\nreturn behaviors.map(b => ({ json: { behavior: b } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        800
+      ],
+      "id": "58194aeb-39e9-467a-8d03-60e855f11413",
+      "name": "Split Behaviors"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ollama:11434/api/embed",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Content-Type\": \"application/json\"\n}",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"model\": \"nomic-embed-text\",\n  \"input\": \"{{$json.behavior}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        384,
+        1024
+      ],
+      "id": "e765d176-aa0d-457c-b9a3-f4f74f81eaf1",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    behavior: $json.behavior,\n    embedding: $json.embeddings[0]\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        880
+      ],
+      "id": "92be4cbf-22d6-4366-88de-117f55213b50",
+      "name": "Normalize Embedding Output"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://weaviate:8080/v1/graphql",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Content-Type\": \"application/json\"\n}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"{ Get { MitreAttackNomic(nearVector: { vector: {{ JSON.stringify($json.embedding) }}, certainty: 0.7 }, limit: 3) { attack_id name type tactic content } } }\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1072,
+        1008
+      ],
+      "id": "213f6be8-339e-4796-9466-a745e9e3e92c",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $json.data?.Get?.MitreAttackNomic || [];\n\nreturn results.map(r => ({\n  json: {\n    behavior: $json.behavior,\n    attack_id: r.attack_id,\n    name: r.name,\n    tactic: r.tactic,\n    content: r.content\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        864
+      ],
+      "id": "c9352b60-7803-4b51-a5fe-c911a70c6966",
+      "name": "Flatten Weaviate Results"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "numberInputs": 3,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2208,
+        416
+      ],
+      "id": "6ac38d27-812c-4506-afec-3a0f4ce13c6a",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a cybersecurity incident investigation assistant.\n\nHere is the full incident report:\n{{ $json.report_text }}\n\nFrom this report, generate EXACTLY two sections:\n\nDescription of Events:\nWrite a clear narrative paragraph describing what happened.\n\nRemediation Steps:\nProvide a numbered list of recommended actions.\n\nRules:\n- You MUST include both sections\n- Use the exact section headers:\n  Description of Events:\n  Remediation Steps:\n- Do NOT include bullet points in the description\n- Do NOT add extra sections\n- Do NOT omit any section\n- Output plain text only",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2608,
+        432
+      ],
+      "id": "33454c9f-a6f3-4771-a968-10c0d82abc9d",
+      "name": "Basic LLM Chain1"
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        2608,
+        592
+      ],
+      "id": "06d31f50-5daa-45ed-bcce-51cac39667ed",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "71lI2KZlmzTzZxPM",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/home/node/output/{{ $('On form submission1').item.json.data[0].filename }}_Analysis{{$now.format(\"yyyy-MM-dd_HH-mm-ss\")}}.txt",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        4192,
+        224
+      ],
+      "id": "6473d434-76e8-4328-bf72-5308888369c0",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "report_text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        3984,
+        224
+      ],
+      "id": "9ed41d98-3ad7-4189-b221-8880ba9fc17a",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        608,
+        896
+      ],
+      "id": "9b12a918-5d32-48d9-a3b8-20623739eb11",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1360,
+        864
+      ],
+      "id": "72dd64f7-c571-4b2a-8670-75e9a8439f26",
+      "name": "Merge2"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "numberInputs": 3,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3296,
+        208
+      ],
+      "id": "7d84168e-57c9-486f-8cbe-f065ea431a1c",
+      "name": "Merge3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const events = $json.events || [];\n\nlet keyEvents = [];\nlet lastAction = null;\n\nevents.forEach((e, idx) => {\n  if (idx === 0 || idx === events.length - 1 || e.action !== lastAction) {\n    keyEvents.push(\n      `${e.timestamp_human} EventID=${e.action} ${e.details.split(\"EventID=\")[1]}`\n    );\n    lastAction = e.action;\n  }\n});\n\nreturn [\n  {\n    json: {\n      key_events: keyEvents\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2416,
+        224
+      ],
+      "id": "1b5357b4-8b0f-4452-997e-921291fc04ea",
+      "name": "Key Events Filter"
+    },
+    {
+      "parameters": {
+        "jsCode": "let logs = Array.isArray($json) ? $json : $input.all().map(item => item.json);\nif (!logs.length) return [{ json: { behaviors: [], message: \"No logs provided\" } }];\n\nfunction toTime(ts) { return new Date(ts).getTime(); }\n\n// Organize by IP and by User\nconst byIP = {}, byUser = {};\nfor (const log of logs) {\n    const ip = log.IpAddress;\n    const user = log.TargetUserName;\n    if (!ip) continue;\n\n    if (!byIP[ip]) byIP[ip] = [];\n    byIP[ip].push(log);\n\n    if (!byUser[user]) byUser[user] = [];\n    byUser[user].push(log);\n}\n\n// ===== Define dynamic behavior rules =====\nconst rules = [\n    {\n        name: \"Brute-force login attempts\",\n        type: \"ip\",\n        condition: (events) => {\n            for (let i = 0; i < events.length; i++) {\n                const start = toTime(events[i].timestamp);\n                const window = events.filter(e =>\n                    e.EventID === \"4625\" &&\n                    toTime(e.timestamp) >= start &&\n                    toTime(e.timestamp) <= start + (5 * 60 * 1000)\n                );\n                if (window.length >= 5) return true;\n            }\n            return false;\n        },\n        message: ip => `Brute-force login attempts from IP ${ip}`\n    },\n    {\n        name: \"Success after repeated failures\",\n        type: \"ip\",\n        condition: (events) => {\n            let failCount = 0;\n            for (const e of events) {\n                if (e.EventID === \"4625\") failCount++;\n                if (e.EventID === \"4624\" && failCount >= 5) return true;\n            }\n            return false;\n        },\n        message: ip => `Successful login after repeated failures from IP ${ip}`\n    },\n    {\n        name: \"Multiple IPs per user\",\n        type: \"user\",\n        condition: (events) => new Set(events.map(e => e.IpAddress).filter(Boolean)).size >= 2,\n        message: user => `User ${user} logged in from multiple IP addresses`\n    },\n    {\n        name: \"Privileged login after authentication\",\n        type: \"user\",\n        condition: (events) => {\n            for (let i = 0; i < events.length - 1; i++) {\n                if (events[i].EventID === \"4624\" && events[i+1].EventID === \"4672\") return true;\n            }\n            return false;\n        },\n        message: user => `Privileged login following authentication for user ${user}`\n    },\n    {\n        name: \"Explicit credential usage\",\n        type: \"log\",\n        condition: (log) => log.EventID === \"4648\",\n        message: (log) => `Explicit credential usage detected for user ${log.TargetUserName}`\n    }\n];\n\n// ===== Evaluate rules dynamically =====\nconst behaviors = [];\n\nfor (const rule of rules) {\n    if (rule.type === \"ip\") {\n        for (const ip in byIP) {\n            const events = byIP[ip].sort((a,b) => toTime(a.timestamp) - toTime(b.timestamp));\n            if (rule.condition(events)) behaviors.push(rule.message(ip));\n        }\n    } else if (rule.type === \"user\") {\n        for (const user in byUser) {\n            const events = byUser[user].sort((a,b) => toTime(a.timestamp) - toTime(b.timestamp));\n            if (rule.condition(events)) behaviors.push(rule.message(user));\n        }\n    } else if (rule.type === \"log\") {\n        for (const log of logs) {\n            if (rule.condition(log)) behaviors.push(rule.message(log));\n        }\n    }\n}\n\n// Deduplicate\nconst uniqueBehaviors = [...new Set(behaviors)];\n\n// Output\nreturn [{ json: { behaviors: uniqueBehaviors, logsCount: logs.length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        800
+      ],
+      "id": "2708e696-4456-4e50-bdcd-4c0e67f08b47",
+      "name": "Detection Engine"
+    },
+    {
+      "parameters": {
+        "jsCode": "const all = $input.all();\n\nreturn [{\n  json: {\n    mitre: all.map(item => item.json)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        864
+      ],
+      "id": "4b5dc50f-ba14-49f8-8445-c807ec6c2309",
+      "name": "Aggregate Mitre1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const mitreItems = $json.mitre || [];\n\nconst behaviorMap = new Map();\n\n// Loop over each Mitre item\nfor (const item of mitreItems) {\n  const behaviorName = item.behavior || \"Unknown Behavior\";\n\n  // If behavior not yet in map, add it\n  if (!behaviorMap.has(behaviorName)) {\n    behaviorMap.set(behaviorName, {\n      behavior: behaviorName,\n      mitre: []\n    });\n  }\n\n  // Push the Mitre technique under the correct behavior\n  behaviorMap.get(behaviorName).mitre.push({\n    attack_id: item.attack_id,\n    name: item.name,\n    tactic: item.tactic,\n    content: item.content\n  });\n}\n\n// Convert map values to array\nconst groupedBehaviors = Array.from(behaviorMap.values());\n\nreturn [{\n  json: {\n    behaviors: groupedBehaviors\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        864
+      ],
+      "id": "9ca0f3f8-5c14-4bef-ae55-d15a849c5e0c",
+      "name": "Group Mitre1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\n\n// Flatten MITRE\nconst flatMitre = (data.mitre || []).flatMap(m => m.mitre || []);\nconst validMitre = flatMitre.filter(m => m.attack_id && m.name);\n\n// Sections\nconst ips = data.ips?.length ? data.ips.join(\", \") : \"Not Provided\";\nconst users = data.users?.length ? data.users.join(\", \") : \"Not Provided\";\nconst earliest = data.earliest || \"Not Provided\";\n\n// Normalize behavior(s)\nconst behaviorsArray = data.behaviors || (data.behavior ? [data.behavior] : []);\nconst behaviors = behaviorsArray.length\n  ? behaviorsArray.map((b, i) => `${i+1}. ${b}`).join(\"\\n\")\n  : \"Not Provided\";\n\nconst mitre = validMitre.length\n  ? validMitre.map((m, i) => `${i+1}. ${m.attack_id} - ${m.name}`).join(\"\\n\")\n  : \"Not Found\";\n\n// LLM OUTPUT PARSING\nconst descriptionMatch = data.llm_output?.match(/\\*\\*Description of Events\\*\\*([\\s\\S]*?)\\*\\*Remediation Steps\\*\\*/);\nconst remediationMatch = data.llm_output?.match(/\\*\\*Remediation Steps\\*\\*([\\s\\S]*)/);\n\nconst description = descriptionMatch\n  ? descriptionMatch[1].trim()\n  : \"Not Provided\";\n\nconst remediation = remediationMatch\n  ? remediationMatch[1].trim()\n  : \"Not Provided\";\n\n// Key Events as Appendix A\nconst appendixA = data.key_events?.length\n  ? data.key_events.map((ke, i) => `${i+1}. ${ke}`).join(\"\\n\")\n  : \"Not Provided\";\n\n// FINAL REPORT (single object)\nconst report_text = `\nIncident Report\n\nReporter Information:\nName: Not Provided\nTitle: Cybersecurity Incident Investigation Assistant\nReport Date: Not Provided\nIncident Number: Not Provided\n\nIncident Overview:\nDate of Incident: ${earliest}\nType: Not Provided\nImpact Level: Not Provided\n\nNetwork Details:\nAttacker IP Address(es): ${ips}\nVictim User(s): ${users}\n\nObserved Behaviors:\n${behaviors}\n\nRelevant MITRE ATT&CK Techniques:\n${mitre}\n\nDescription of Events:\n${description}\n\nRemediation Steps:\n${remediation}\n\nAppendix A: Key Events\n${appendixA}\n`;\n\nreturn [{ json: { report_text } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        432
+      ],
+      "id": "0f0e0966-f2e2-4aeb-b014-3134325cefbe",
+      "name": "Prepare LLM Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.text || $json.output || $json.response || $json.llm_output || \"\";\n\n// Extract Description (stop at Remediation Steps or end of text)\nconst descriptionMatch = text.match(\n  /Description of Events:?\\s*([\\s\\S]*?)(?:Remediation Steps:?|$)/i\n);\n\n// Extract Remediation (optional)\nconst remediationMatch = text.match(\n  /Remediation Steps:?\\s*([\\s\\S]*)/i\n);\n\nconst description = descriptionMatch ? descriptionMatch[1].trim() : \"Not Provided\";\nconst remediation = remediationMatch ? remediationMatch[1].trim() : \"Not Provided\";\n\nreturn [{\n  json: {\n    description,\n    remediation\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2944,
+        432
+      ],
+      "id": "16b6e015-6235-4724-a217-503634049389",
+      "name": "Parse LLM Output1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\n\n// =======================\n// BASIC SECTIONS\n// =======================\nconst ips = data.ips?.length ? data.ips.join(\", \") : \"Not Provided\";\nconst users = data.users?.length ? data.users.join(\", \") : \"Not Provided\";\n\n// Human-readable date (fallback safe)\nconst earliestRaw = data.earliest;\nconst earliest = earliestRaw\n  ? new Date(earliestRaw).toLocaleString(\"en-US\", {\n      weekday: \"short\",\n      year: \"numeric\",\n      month: \"short\",\n      day: \"numeric\",\n      hour: \"2-digit\",\n      minute: \"2-digit\",\n      second: \"2-digit\"\n    })\n  : \"Not Provided\";\n\n// LLM output\nconst description = data.description || \"Not Provided\";\nconst remediation = data.remediation || \"Not Provided\";\n\n// =======================\n// BEHAVIORS \n// =======================\nconst behaviorsArray = data.behaviors || [];\n\nconst behaviors = behaviorsArray.length\n  ? behaviorsArray.map((b, i) => `${i+1}. ${b.behavior}`).join(\"\\n\")\n  : \"Not Provided\";\n\n// =======================\n// MITRE (GROUPED BY BEHAVIOR)\n// =======================\nconst mitreSet = new Map();\n\nfor (const b of behaviorsArray) {\n  for (const m of (b.mitre || [])) {\n    if (m.attack_id && !mitreSet.has(m.attack_id)) {\n      mitreSet.set(m.attack_id, `${m.attack_id} - ${m.name}`);\n    }\n  }\n}\n\nconst mitre = mitreSet.size\n  ? Array.from(mitreSet.values()).map((m, i) => `${i+1}. ${m}`).join(\"\\n\")\n  : \"Not Found\";\n\n// =======================\n// DETAILED MITRE PER BEHAVIOR \n// =======================\nconst mitreByBehavior = behaviorsArray.length\n  ? behaviorsArray.map((b, i) => {\n      const techniques = (b.mitre || [])\n        .map(m => `${m.attack_id} - ${m.name}`)\n        .join(\", \") || \"None\";\n\n      return `${i+1}. ${b.behavior}\\n   Techniques: ${techniques}`;\n    }).join(\"\\n\\n\")\n  : \"Not Provided\";\n\n// =======================\n// EVENTS \n// =======================\nconst events = data.events?.length\n  ? data.events.map((e, i) => {\n      const timestamp = e.timestamp_human || e.timestamp || \"Not Provided\";\n      const eventType = e.event_type || \"Not Provided\";\n\n      const details = e.details\n        || (e.expert_messages?.map(m =>\n            `${m.message} (sev ${m.severity_normalized})`\n          ).join(\"; \"))\n        || \"Not Provided\";\n\n      return `${i+1}. ${timestamp} | ${eventType} | ${details}`;\n    }).join(\"\\n\")\n  : \"Not Provided\";\n\n// =======================\n// APPENDIX A (KEY EVENTS)\n// =======================\nconst appendixA = data.key_events?.length\n  ? data.key_events.map((ke, i) => `${i+1}. ${ke}`).join(\"\\n\")\n  : \"Not Provided\";\n\n// =======================\n// FILENAME\n// =======================\nconst original_filename =\n  data.original_filename ||\n  data.events?.[0]?.original_filename ||\n  \"Not Provided\";\n\n// =======================\n// FINAL REPORT\n// =======================\nconst report_text = `\nIncident Report\n\nReporter Information:\nName: Not Provided\nTitle: Cybersecurity Incident Investigation Assistant\nReport Date: ${new Date().toLocaleString()}\nIncident Number: Not Provided\nLog Analyzed: ${original_filename}\n\nIncident Overview:\nDate of Incident: ${earliest}\nType: Not Provided\nImpact Level: Not Provided\n\nNetwork Details:\nAttacker IP Address(es): ${ips}\nVictim User(s): ${users}\n\nBehavior-to-Technique Mapping:\n${mitreByBehavior}\n\nDescription of Events:\n${description}\n\nRemediation Steps:\n${remediation}\n\nAppendix A: Key Events\n${appendixA}\n`;\n\nreturn [{\n  json: {\n    report_text,\n    original_filename\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3536,
+        224
+      ],
+      "id": "c6987e90-32ab-4e35-8fde-e622c8e6f5a5",
+      "name": "Report Builder"
+    },
+    {
+      "parameters": {
+        "jsCode": "const behaviors = $json.behaviors || $json.events?.map(e => e.event_type) || [];\n\nconst simplifiedBehaviors = behaviors.map(b => {\n  // Remove IP addresses\n  let s = b.replace(/\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b/g, \"\");\n  // Remove ports\n  s = s.replace(/port\\s+\\d+/gi, \"\");\n  // Remove extra whitespace\n  s = s.replace(/\\s+/g, \" \").trim();\n  return s;\n});\n\n// Deduplicate\nconst uniqueBehaviors = [...new Set(simplifiedBehaviors)];\n\nreturn [{\n  json: {\n    behaviors: uniqueBehaviors\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        800
+      ],
+      "id": "e4dabaaf-17e4-4e22-ae08-a7cdd4f13826",
+      "name": "Simplify"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission1": {
+      "main": [
+        [
+          {
+            "node": "Extract from File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File1": {
+      "main": [
+        [
+          {
+            "node": "Log Parser1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Parser1": {
+      "main": [
+        [
+          {
+            "node": "Detection Engine",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Chunk Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Logs": {
+      "main": [
+        [
+          {
+            "node": "Info Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Info Extractor": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Chunks": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Key Events Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Behaviors": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Normalize Embedding Output": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Flatten Weaviate Results": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Mitre1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Prepare LLM Input",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain1": {
+      "main": [
+        [
+          {
+            "node": "Parse LLM Output1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Normalize Embedding Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge2": {
+      "main": [
+        [
+          {
+            "node": "Flatten Weaviate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge3": {
+      "main": [
+        [
+          {
+            "node": "Report Builder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Key Events Filter": {
+      "main": [
+        [
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Detection Engine": {
+      "main": [
+        [
+          {
+            "node": "Simplify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Mitre1": {
+      "main": [
+        [
+          {
+            "node": "Group Mitre1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group Mitre1": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Prepare LLM Input": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LLM Output1": {
+      "main": [
+        [
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Report Builder": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simplify": {
+      "main": [
+        [
+          {
+            "node": "Split Behaviors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "0caf1c9f-ee2a-4217-bc68-5c42d6becf74",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a70a1f31875f3ca24d693a509b8dc9a0ab6da8eb7e97f41e89af98a18eabae4b"
+  },
+  "id": "sE85dRmOqkz3bruL",
+  "tags": []
+}
