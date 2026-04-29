@@ -1,0 +1,24 @@
+tshark -r <filename>.pcap -Y "ip" -T fields \
+-e frame.time_epoch \
+-e frame.len \
+-e frame.protocols \
+-e ip.src \
+-e ip.dst \
+-e ip.proto \
+-e tcp.srcport \
+-e tcp.dstport \
+-e tcp.flags \
+-e udp.srcport \
+-e udp.dstport \
+-e ntp.stratum \
+-e ntp.ppoll \
+-e ntp.precision \
+-e ntp.rootdelay \
+-e ntp.rootdispersion \
+-e ntp.refid \
+-e ntp.org \
+-e ntp.rec \
+-e ntp.xmt \
+-E header=y \
+-E separator=, \
+-E occurrence=f > <filename>.csv
