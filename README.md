@@ -6,7 +6,7 @@
 
 `pts-agent-karen` is a research agent that runs on top of the [Project-Twilight-Synapse](https://github.com/Capstone-AI-Research-Project/Project-Twilight-Synapse) cybersecurity AI platform. It uses [n8n](https://n8n.io/) for orchestration, [Weaviate](https://weaviate.io/) as a vector store, and [Ollama](https://ollama.com/) for local embedding (`nomic-embed-text`) and reasoning (`llama3.2` for log analysis, `qwen2.5:7b` for PCAP analysis).
 
-Karen ingests two reference knowledge bases — the official MITRE ATT&CK enterprise matrix and a curated set of behavior patterns — then uses semantic search against those collections to surface MITRE-mapped detections in either:
+Karen ingests two reference knowledge bases, the official MITRE ATT&CK enterprise matrix and a curated set of behavior patterns then uses semantic search against those collections to surface MITRE-mapped detections in either:
 
 - Windows / Linux event logs, or
 - Network packet captures (`.pcap` → CSV → JSON pipeline).
