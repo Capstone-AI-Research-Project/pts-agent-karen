@@ -1,1 +1,237 @@
-
+[
+  {
+    "technique_id": "T1110",
+    "behavior": "5 or more failed login attempts from the same IP within 5 minutes",
+    "context": "Indicates potential brute-force authentication attempts"
+  },
+  {
+    "technique_id": "T1110",
+    "behavior": "Successful login after 5+ failed attempts from one IP within 10 minutes",
+    "context": "Possible brute-force or credential stuffing success"
+  },
+  {
+    "technique_id": "T1078",
+    "behavior": "Successful login from a new geographic location within 5 minutes of prior login",
+    "context": "May indicate compromised credentials being used from different locations"
+  },
+  {
+    "technique_id": "T1078",
+    "behavior": "Simultaneous logins to the same account from two different IPs within 2 minutes",
+    "context": "Indicates potential credential sharing or account compromise"
+  },
+  {
+    "technique_id": "T1021.001",
+    "behavior": "3 or more RDP login attempts from the same IP within 5 minutes",
+    "context": "Indicates possible remote brute-force or lateral movement via RDP"
+  },
+  {
+    "technique_id": "T1021.002",
+    "behavior": "3 or more SSH login failures from same IP within 5 minutes",
+    "context": "Indicates potential SSH brute-force attack"
+  },
+  {
+    "technique_id": "T1059",
+    "behavior": "Execution of command shell or scripting engine followed by network connection within 2 minutes",
+    "context": "Indicates possible command execution with outbound communication"
+  },
+  {
+    "technique_id": "T1059.001",
+    "behavior": "PowerShell launched with encoded command flag within process logs",
+    "context": "Indicates obfuscated or malicious PowerShell usage"
+  },
+  {
+    "technique_id": "T1059.003",
+    "behavior": "Bash shell spawning network connections within 2 minutes",
+    "context": "Indicates possible remote command execution or reverse shell"
+  },
+  {
+    "technique_id": "T1046",
+    "behavior": "Connections to 20 or more unique ports on a single host within 2 minutes",
+    "context": "Indicates port scanning activity"
+  },
+  {
+    "technique_id": "T1046",
+    "behavior": "Connections to 10 or more hosts on same port within 2 minutes",
+    "context": "Indicates horizontal network scanning"
+  },
+  {
+    "technique_id": "T1003",
+    "behavior": "Access to LSASS process followed by memory read within 1 minute",
+    "context": "Indicates potential credential dumping attempt"
+  },
+  {
+    "technique_id": "T1087",
+    "behavior": "Execution of account enumeration commands followed by network logins within 5 minutes",
+    "context": "Indicates account discovery preceding lateral movement"
+  },
+  {
+    "technique_id": "T1082",
+    "behavior": "System information commands executed on 3+ hosts within 5 minutes",
+    "context": "Indicates automated system discovery activity"
+  },
+  {
+    "technique_id": "T1018",
+    "behavior": "Host discovery commands executed followed by connections to discovered hosts within 5 minutes",
+    "context": "Indicates network discovery followed by lateral movement"
+  },
+  {
+    "technique_id": "T1070",
+    "behavior": "Event log cleared within 2 minutes of successful privileged login",
+    "context": "Indicates attempt to remove forensic evidence"
+  },
+  {
+    "technique_id": "T1070",
+    "behavior": "Deletion of log files within system directories within 5 minutes of suspicious activity",
+    "context": "Indicates defense evasion via log removal"
+  },
+  {
+    "technique_id": "T1562",
+    "behavior": "Security service stopped within 2 minutes of suspicious process execution",
+    "context": "Indicates attempt to disable defenses"
+  },
+  {
+    "technique_id": "T1562",
+    "behavior": "Firewall rules modified followed by outbound connection within 2 minutes",
+    "context": "Indicates evasion to enable command and control"
+  },
+  {
+    "technique_id": "T1055",
+    "behavior": "Process injecting into another process followed by network activity within 2 minutes",
+    "context": "Indicates process injection for stealth execution"
+  },
+  {
+    "technique_id": "T1105",
+    "behavior": "Execution of binary immediately after download from external IP within 2 minutes",
+    "context": "Indicates ingress tool transfer and execution"
+  },
+  {
+    "technique_id": "T1071",
+    "behavior": "Repeated connections to same external IP over uncommon port within 5 minutes",
+    "context": "Indicates possible command and control communication"
+  },
+  {
+    "technique_id": "T1071.001",
+    "behavior": "High-frequency HTTP requests to single domain within 2 minutes",
+    "context": "Indicates possible HTTP-based C2 beaconing"
+  },
+  {
+    "technique_id": "T1071.004",
+    "behavior": "Frequent DNS queries to same domain within 2 minutes",
+    "context": "Indicates possible DNS tunneling or beaconing"
+  },
+  {
+    "technique_id": "T1041",
+    "behavior": "Large volume of outbound data transferred within 5 minutes",
+    "context": "Indicates possible data exfiltration"
+  },
+  {
+    "technique_id": "T1041",
+    "behavior": "Sensitive file access followed by outbound network transfer within 2 minutes",
+    "context": "Indicates staged data exfiltration"
+  },
+  {
+    "technique_id": "T1486",
+    "behavior": "Mass file modifications (>50 files) within 2 minutes",
+    "context": "Indicates possible ransomware encryption activity"
+  },
+  {
+    "technique_id": "T1486",
+    "behavior": "Creation of ransom note files across multiple directories within 5 minutes",
+    "context": "Indicates ransomware behavior"
+  },
+  {
+    "technique_id": "T1547",
+    "behavior": "Registry run key modification followed by process execution within 5 minutes",
+    "context": "Indicates persistence mechanism installation"
+  },
+  {
+    "technique_id": "T1053",
+    "behavior": "Scheduled task created followed by execution within 5 minutes",
+    "context": "Indicates persistence or execution mechanism"
+  },
+  {
+    "technique_id": "T1543",
+    "behavior": "New service created and started within 2 minutes",
+    "context": "Indicates persistence via service installation"
+  },
+  {
+    "technique_id": "T1112",
+    "behavior": "Registry modifications affecting security settings within 5 minutes",
+    "context": "Indicates tampering with system configuration"
+  },
+  {
+    "technique_id": "T1566",
+    "behavior": "Email received with attachment followed by process execution within 2 minutes",
+    "context": "Indicates phishing leading to execution"
+  },
+  {
+    "technique_id": "T1204",
+    "behavior": "User execution of downloaded file followed by network connection within 2 minutes",
+    "context": "Indicates user-triggered malicious execution"
+  },
+  {
+    "technique_id": "T1210",
+    "behavior": "Multiple failed service logins followed by success within 5 minutes",
+    "context": "Indicates exploitation of remote services"
+  },
+  {
+    "technique_id": "T1550",
+    "behavior": "Authentication using tokens without prior login event within 2 minutes",
+    "context": "Indicates possible token impersonation"
+  },
+  {
+    "technique_id": "T1552",
+    "behavior": "Access to credential files followed by login attempt within 2 minutes",
+    "context": "Indicates use of unsecured credentials"
+  },
+  {
+    "technique_id": "T1036",
+    "behavior": "Process name mimics legitimate system process but runs from non-standard directory",
+    "context": "Indicates masquerading technique"
+  },
+  {
+    "technique_id": "T1499",
+    "behavior": "High volume of requests to single service within 2 minutes",
+    "context": "Indicates potential denial of service activity"
+  },
+  {
+    "technique_id": "T1049",
+    "behavior": "Network connection enumeration followed by outbound connections within 5 minutes",
+    "context": "Indicates network reconnaissance"
+  },
+  {
+    "technique_id": "T1016",
+    "behavior": "Network configuration commands executed on multiple hosts within 5 minutes",
+    "context": "Indicates automated network discovery"
+  },
+  {
+    "technique_id": "T1570",
+    "behavior": "File transfer between internal hosts followed by execution within 5 minutes",
+    "context": "Indicates lateral tool transfer"
+  },
+  {
+    "technique_id": "T1027",
+    "behavior": "Execution of binary with high entropy or obfuscated strings",
+    "context": "Indicates obfuscated or packed malware"
+  },
+  {
+    "technique_id": "T1218",
+    "behavior": "Trusted binary executing unexpected child process within 2 minutes",
+    "context": "Indicates signed binary proxy execution"
+  },
+  {
+    "technique_id": "T1553",
+    "behavior": "Execution of unsigned or untrusted binary bypassing security controls",
+    "context": "Indicates subversion of trust controls"
+  },
+  {
+    "technique_id": "T1490",
+    "behavior": "Deletion of volume shadow copies within 2 minutes",
+    "context": "Indicates ransomware preparation"
+  },
+  {
+    "technique_id": "T1489",
+    "behavior": "Stopping multiple services within 2 minutes",
+    "context": "Indicates impact or defense evasion activity"
+  }
+]
