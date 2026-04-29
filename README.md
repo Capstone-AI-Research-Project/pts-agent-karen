@@ -1,17 +1,21 @@
-# Agent Karen
+# pts-agent-karen
 
 > Behavior-based log and PCAP analysis agent for the Project Twilight Synapse platform.
 
 ## Project Overview
 
-`pts-agent-karen` is a research agent that runs on top of the [Project-Twilight-Synapse](https://github.com/Capstone-AI-Research-Project/Project-Twilight-Synapse) cybersecurity AI platform. It uses [n8n](https://n8n.io/) for orchestration, [Weaviate](https://weaviate.io/) as a vector store, and [Ollama](https://ollama.com/) for local embedding (`nomic-embed-text`) and reasoning (`qwen2.5:7b`).
+`pts-agent-karen` is a research agent that runs on top of the [Project-Twilight-Synapse](https://github.com/Capstone-AI-Research-Project/Project-Twilight-Synapse) cybersecurity AI platform. It uses [n8n](https://n8n.io/) for orchestration, [Weaviate](https://weaviate.io/) as a vector store, and [Ollama](https://ollama.com/) for local embedding (`nomic-embed-text`) and reasoning (`llama3.2` for log analysis, `qwen2.5:7b` for PCAP analysis).
 
-Karen ingests two reference knowledge bases, the official MITRE ATT&CK enterprise matrix and a curated set of behavior patterns, then uses semantic search against those collections to surface MITRE-mapped detections in either:
+Karen ingests two reference knowledge bases — the official MITRE ATT&CK enterprise matrix and a curated set of behavior patterns — then uses semantic search against those collections to surface MITRE-mapped detections in either:
 
 - Windows / Linux event logs, or
 - Network packet captures (`.pcap` → CSV → JSON pipeline).
 
 The agent's two analysis workflows enrich detections with MITRE technique context and have a local LLM draft a structured analyst-style report.
+
+## Background
+
+Karen is named after team member **Karen Langdon**, whose research drove the behavior-pattern detection design and whose agent this primarily is. The repo follows the same naming convention used by the sibling agent [pts-agent-kyle](https://github.com/Capstone-AI-Research-Project/pts-agent-kyle) — both are individual research agents that build on top of the shared Project-Twilight-Synapse foundation.
 
 ## Prerequisites
 
@@ -23,7 +27,8 @@ This repo is **not standalone**. You need the backend stack from Project-Twiligh
    - Weaviate at `http://localhost:8080` (from the host)
 2. **Ollama models pulled** (easiest is via Open-WebUI → *Models*):
    - `nomic-embed-text:latest` — embedding model used by both ingestion workflows.
-   - `qwen2.5:7b` — reasoning model used by both analysis agents.
+   - `llama3.2:latest` — reasoning model used by the Log Analysis agent (`v2.14b`).
+   - `qwen2.5:7b` — reasoning model used by the PCAP Analysis agent (`v2.18`).
 3. **For PCAP analysis only**, on whichever host runs the prep step:
    - `tshark` and `editcap` (Wireshark CLI tools)
    - Python 3 (the prep script uses standard library only)
@@ -41,7 +46,7 @@ pts-agent-karen/
 │   ├── cutfields.sh               # tshark → CSV field extraction
 │   └── cleandata.py               # CSV → JSON normalization
 ├── data/
-│   └── behavior.json              # 46 MITRE-mapped behavior patterns
+│   └── behavior.json              # 47 MITRE-mapped behavior patterns
 ├── docs/
 │   └── README.pdf                 # Original install / config guide
 ├── README.md
@@ -83,7 +88,7 @@ In the n8n UI (`http://localhost:5678`):
 
 ### 4. Configure credentials
 
-Each workflow that talks to Ollama or Weaviate needs n8n credentials wired in. You only need to do this once per credential, n8n reuses them across workflows.
+Each workflow that talks to Ollama or Weaviate needs n8n credentials wired in. You only need to do this once per credential — n8n reuses them across workflows.
 
 **Ollama (Embeddings + Chat Model nodes):**
 
@@ -95,14 +100,14 @@ Each workflow that talks to Ollama or Weaviate needs n8n credentials wired in. Y
 
 The bundled credential reference is named `Weaviate Credentials account`. Either reuse the equivalent credential you already created in Project-Twilight-Synapse, or create a new one pointing at `http://weaviate:8080`.
 
-### 5. Build the vector stores
+### 5. Build the vector stores (one-time)
 
-Run these once to populate Weaviate. Both ingestion workflows are **destructive**, they `DELETE` the existing schema first, then recreate and embed.
+Run these once to populate Weaviate. Both ingestion workflows are **destructive** — they `DELETE` the existing schema first, then recreate and embed.
 
 1. Open **Create and Embed v2.0 Mitre Attack** → **Execute Workflow**. This pulls the latest STIX bundle from MITRE and embeds the `attack-pattern` objects into the `MitreAttackNomic` collection. Expect **~3 hours** on modest hardware.
-2. Open **Create and Embed v3.0 Behavior** → confirm the **Read/Write Files from Disk** node's path matches where you actually placed `behavior.json` in step 2 → **Execute Workflow**. This embeds the 46 behavior patterns into the `MitreBehavior` collection. Expect **~30 minutes**.
+2. Open **Create and Embed v3.0 Behavior** → confirm the **Read/Write Files from Disk** node's path matches where you actually placed `behavior.json` in step 2 → **Execute Workflow**. This embeds the 47 behavior patterns into the `MitreBehavior` collection. Expect **~30 minutes**.
 
-> **Note:** The original guide in `docs/README.pdf` recommends deleting the trailing `Debug` node before running production ingestion. The `Create and Embed v3.0 Behavior` workflow shipped here still has it. Either remove the node in the n8n UI before executing, or leave it (harmless, just adds a small amount of time per batch).
+> **Note:** The original guide in `docs/README.pdf` recommends deleting the trailing `Debug` node before running production ingestion. The `Create and Embed v3.0 Behavior` workflow shipped here still has it — either remove the node in the n8n UI before executing, or leave it (harmless, just adds a small amount of time per batch).
 
 ### 6. Verify the schema
 
@@ -122,13 +127,15 @@ Both analysis agents are exposed as **n8n form triggers**. Open the workflow in 
 
 1. Open **Simple Log Analysis Agent Weaviate Behavior v2.14b**.
 2. Activate the workflow (toggle in the top right) so the form trigger goes live.
-3. Submit a JSON log file via the form. The workflow will:
+3. Submit a JSON log file via the form (the form field is named `Log File` and accepts a single file). The workflow will:
    - parse and chunk the logs,
    - extract event metadata,
-   - query both Weaviate collections semantically,
-   - run a detection engine over the matches,
-   - have the local LLM (`qwen2.5:7b` via Ollama) draft a structured analyst report,
+   - run a code-based **Detection Engine** that matches events against the curated behavior patterns from `behavior.json`,
+   - semantically search the `MitreAttackNomic` Weaviate collection for related ATT&CK techniques and enrich each detection with technique context,
+   - have the local LLM (`llama3.2:latest` via Ollama) draft a structured analyst report,
    - write the report to disk via the Read/Write Files node.
+
+> **Note:** The `MitreBehavior` Weaviate collection populated in step 5 of installation is loaded as reference data but is **not** currently queried by either analysis agent — the Detection Engine handles behavior pattern matching directly in code. The collection is retained for future workflow extensions that might use it for semantic behavior search.
 
 ### PCAP analysis
 
@@ -148,7 +155,7 @@ Step by step:
    ```bash
    editcap -c 50000 sliced.pcap trimmed.pcap
    ```
-3. **Extract fields to CSV.** Edit `scripts/cutfields.sh` and replace `<filename>` with your input PCAP and the desired output CSV name, then:
+3. **Extract fields to CSV.** Edit the two variables at the top of `scripts/cutfields.sh` — set `INPUT_PCAP` to your trimmed PCAP and `OUTPUT_CSV` to your desired CSV name — then:
    ```bash
    bash scripts/cutfields.sh
    ```
@@ -169,7 +176,7 @@ Step by step:
 ## Related projects
 
 - [Project-Twilight-Synapse](https://github.com/Capstone-AI-Research-Project/Project-Twilight-Synapse) — backend Docker / n8n / Weaviate / Ollama platform this agent depends on.
-- [pts-casa (a.k.a. pts-agent-kyle)](https://github.com/ktalons/pts-casa) — sibling research agent under the same naming convention; multi-agent investigation system that maps findings across MITRE ATT&CK, MITRE CAR, NIST CSF 2.0, and CIS Controls v8.1.2.
+- [pts-agent-kyle](https://github.com/Capstone-AI-Research-Project/pts-agent-kyle) — sibling research agent under the same naming convention.
 
 ## License
 

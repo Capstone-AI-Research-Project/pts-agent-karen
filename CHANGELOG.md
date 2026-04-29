@@ -18,10 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Simple Log Analysis Agent Weaviate Behavior v2.14b** — Windows / Linux log analysis pipeline, 27 nodes.
   - **PCAP Simple Log Analysis Agent PCAP Weaviate Behavior v2.18** — PCAP analysis pipeline (consumes the JSON produced by the prep scripts), 27 nodes.
 - PCAP preparation scripts under `scripts/`:
-  - `cutfields.sh` — extracts IP-based packet fields from a `.pcap` to CSV using `tshark`.
+  - `cutfields.sh` — extracts IP-based packet fields from a `.pcap` to CSV using `tshark`. Configured by editing `INPUT_PCAP` and `OUTPUT_CSV` variables at the top of the script.
   - `cleandata.py` — converts the CSV to structured JSON, normalizes protocol stacks, and flags anomalous nesting.
 - Seed data:
-  - `data/behavior.json` — 46 MITRE-mapped behavior patterns covering brute-force, credential access, lateral movement, command and control, exfiltration, ransomware impact, and persistence techniques.
+  - `data/behavior.json` — 47 MITRE-mapped behavior patterns covering brute-force, credential access, lateral movement, command and control, exfiltration, ransomware impact, and persistence techniques.
+- Reasoning models per analysis agent:
+  - Log Analysis agent (`v2.14b`) uses `llama3.2:latest`.
+  - PCAP Analysis agent (`v2.18`) uses `qwen2.5:7b`.
 - Documentation: `README.md`, `LICENSE` (MIT), this `CHANGELOG.md`, and the original install / configuration guide preserved in `docs/README.pdf`.
 
 [Unreleased]: https://github.com/Capstone-AI-Research-Project/pts-agent-karen/compare/v1.0.0...HEAD
