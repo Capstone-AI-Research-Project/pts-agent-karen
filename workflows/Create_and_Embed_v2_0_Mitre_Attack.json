@@ -17,9 +17,9 @@
         "mode": "insert",
         "weaviateCollection": {
           "__rl": true,
-          "value": "MitreAttack",
+          "value": "MitreAttackNomic",
           "mode": "list",
-          "cachedResultName": "MitreAttack"
+          "cachedResultName": "MitreAttackNomic"
         },
         "options": {}
       },
