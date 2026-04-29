@@ -1,4 +1,4 @@
-# pts-agent-karen
+# Agent Karen
 
 > Behavior-based log and PCAP analysis agent for the Project Twilight Synapse platform.
 
@@ -12,10 +12,6 @@ Karen ingests two reference knowledge bases — the official MITRE ATT&CK enterp
 - Network packet captures (`.pcap` → CSV → JSON pipeline).
 
 The agent's two analysis workflows enrich detections with MITRE technique context and have a local LLM draft a structured analyst-style report.
-
-## Background
-
-Karen is named after team member **Karen Langdon**, whose research drove the behavior-pattern detection design and whose agent this primarily is. The repo follows the same naming convention used by the sibling agent [pts-agent-kyle](https://github.com/Capstone-AI-Research-Project/pts-agent-kyle) — both are individual research agents that build on top of the shared Project-Twilight-Synapse foundation.
 
 ## Prerequisites
 
