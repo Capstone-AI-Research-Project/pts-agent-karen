@@ -1,0 +1,50 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# --- IDEs / editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Environment / secrets ---
+.env
+.env.local
+*.key
+*.pem
+credentials.json
+
+# --- Logs ---
+*.log
+logs/
+
+# --- User-generated test artifacts (do not commit) ---
+# PCAPs and intermediate CSVs from the prep pipeline
+*.pcap
+*.pcapng
+*.csv
+
+# Generated analysis reports
+output/
+reports/
