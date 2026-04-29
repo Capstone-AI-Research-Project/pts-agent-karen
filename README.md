@@ -1,4 +1,4 @@
-# pts-agent-karen
+# Agent Karen
 
 > Behavior-based log and PCAP analysis agent for the Project Twilight Synapse platform.
 
